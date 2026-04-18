@@ -34,7 +34,7 @@ const stalls = [
     grade: "5-mi",
     category: "主菜",
     name: "わが屋",
-    menus: [{ id: "3", name: "パン", price: 500, image: "🍞" }],
+    menus: [{ id: "1", name: "パン", price: 500, image: "🍞" }],
   },
   {
     id: "C",
@@ -42,8 +42,8 @@ const stalls = [
     category: "デザート",
     name: "こんにち屋",
     menus: [
-      { id: "4", name: "ホットケーキ（チョコ）", price: 200, image: "🥞🍫" },
-      { id: "5", name: "ホットケーキ（ストロベリー）", price: 200, image: "🥞🍓" },
+      { id: "1", name: "ホットケーキ（チョコ）", price: 200, image: "🥞🍫" },
+      { id: "2", name: "ホットケーキ（ストロベリー）", price: 200, image: "🥞🍓" },
     ],
   },
 ];
@@ -55,6 +55,7 @@ const allMenus = stalls.flatMap((stall) =>
     stallName: stall.name,
     grade: stall.grade,
     category: stall.category,
+    menuKey: `${stall.id}-${menu.id}`,
   }))
 );
 
@@ -84,18 +85,9 @@ const buttonGhost =
   "border border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50";
 const buttonPrimary =
   "bg-slate-900 text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50";
-const buttonDanger =
-  "bg-rose-600 text-white hover:bg-rose-500";
+const buttonDanger = "bg-rose-600 text-white hover:bg-rose-500";
 const chipBase =
   "rounded-full border px-3 py-1.5 text-sm font-medium transition";
-
-function AppShell({ children }) {
-  return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.08),_transparent_28%),linear-gradient(180deg,_#f8fafc_0%,_#eef2ff_100%)] px-4 py-6 text-slate-900 md:px-6 xl:px-8">
-      <div className="mx-auto max-w-7xl space-y-6">{children}</div>
-    </div>
-  );
-}
 
 function HeaderHero() {
   return (
@@ -200,7 +192,12 @@ function StatusPill({ type, children }) {
   };
 
   return (
-    <span className={cx("inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold", styles[type] || styles.neutral)}>
+    <span
+      className={cx(
+        "inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold",
+        styles[type] || styles.neutral
+      )}
+    >
       {children}
     </span>
   );
@@ -210,7 +207,7 @@ function MenuGrid({ menus, stopMap, onAdd, showAdd = true }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {menus.map((menu, i) => {
-        const stopped = !!stopMap[menu.id];
+        const stopped = !!stopMap[menu.menuKey];
         return (
           <motion.div
             key={`${menu.stallId}-${menu.id}-${i}`}
@@ -383,6 +380,7 @@ function useCustomerView(orders, stopMap, onCreateOrders, resetAfterSubmit = fal
           stallName: s.name,
           grade: s.grade,
           category: s.category,
+          menuKey: `${s.id}-${m.id}`,
         }))
       );
     }
@@ -394,6 +392,7 @@ function useCustomerView(orders, stopMap, onCreateOrders, resetAfterSubmit = fal
           stallName: stall.name,
           grade: stall.grade,
           category: stall.category,
+          menuKey: `${stall.id}-${m.id}`,
         }))
       : [];
   }, [filteredStalls, stallId]);
@@ -408,6 +407,7 @@ function useCustomerView(orders, stopMap, onCreateOrders, resetAfterSubmit = fal
         stallId: m.stallId,
         stallName: m.stallName,
         menuId: m.id,
+        menuKey: m.menuKey,
         menuName: m.name,
         price: m.price,
       },
@@ -486,50 +486,50 @@ function CustomerTerminal({
       </div>
 
       <div className="space-y-4">
-  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-    <PillTabs title="1. 種類を選ぶ" options={categories} value={v.category} onChange={v.setCategory} />
-    <PillTabs title="2. 学年・学科を選ぶ" options={grades} value={v.grade} onChange={v.setGrade} />
-    <PillTabs
-      title="3. 屋台を選ぶ"
-      options={["全部", ...v.filteredStalls.map((s) => s.id)]}
-      value={v.stallId}
-      onChange={v.setStallId}
-      label={(id) =>
-        id === "全部"
-          ? "全部"
-          : `${stalls.find((s) => s.id === id)?.name}（${stalls.find((s) => s.id === id)?.grade}）`
-      }
-    />
-  </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <PillTabs title="1. 種類を選ぶ" options={categories} value={v.category} onChange={v.setCategory} />
+          <PillTabs title="2. 学年・学科を選ぶ" options={grades} value={v.grade} onChange={v.setGrade} />
+          <PillTabs
+            title="3. 屋台を選ぶ"
+            options={["全部", ...v.filteredStalls.map((s) => s.id)]}
+            value={v.stallId}
+            onChange={v.setStallId}
+            label={(id) =>
+              id === "全部"
+                ? "全部"
+                : `${stalls.find((s) => s.id === id)?.name}（${stalls.find((s) => s.id === id)?.grade}）`
+            }
+          />
+        </div>
 
-  <div className={cx(softPanel, "p-4 md:p-5")}>
-    <div className="mb-4 flex items-center justify-between gap-3">
-      <div>
-        <div className="text-sm text-slate-500">4. メニュー表</div>
-        <div className="text-lg font-bold">注文したい商品を選んでください</div>
+        <div className={cx(softPanel, "p-4 md:p-5")}>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm text-slate-500">4. メニュー表</div>
+              <div className="text-lg font-bold">注文したい商品を選んでください</div>
+            </div>
+            {interactive ? (
+              <button className={cx(buttonBase, buttonGhost)} onClick={v.reset}>
+                絞り込みをリセット
+              </button>
+            ) : null}
+          </div>
+
+          {v.menus.length ? (
+            <MenuGrid menus={v.menus} stopMap={stopMap} onAdd={v.add} showAdd={interactive} />
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+              条件に合うメニューがありません。
+            </div>
+          )}
+        </div>
+
+        {interactive ? (
+          <CartPanel cart={v.cart} total={v.total} onRemove={v.remove} onSubmit={v.submit} />
+        ) : null}
+
+        <ReceiptDialog receipts={v.receipts} onClose={() => v.setReceipts([])} />
       </div>
-      {interactive ? (
-        <button className={cx(buttonBase, buttonGhost)} onClick={v.reset}>
-          絞り込みをリセット
-        </button>
-      ) : null}
-    </div>
-
-    {v.menus.length ? (
-      <MenuGrid menus={v.menus} stopMap={stopMap} onAdd={v.add} showAdd={interactive} />
-    ) : (
-      <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-        条件に合うメニューがありません。
-      </div>
-    )}
-  </div>
-
-  {interactive ? (
-    <CartPanel cart={v.cart} total={v.total} onRemove={v.remove} onSubmit={v.submit} />
-  ) : null}
-
-  <ReceiptDialog receipts={v.receipts} onClose={() => v.setReceipts([])} />
-</div>
     </div>
   );
 }
@@ -551,7 +551,7 @@ function StatCard({ icon: Icon, label, value, tone = "slate" }) {
         </div>
         <div>
           <div className="text-sm text-slate-500">{label}</div>
-          <div className="text-3xl font-bold tracking-tight">{value}</div>
+          <div className="text-3xl font-bold tracking-tight break-words">{value}</div>
         </div>
       </div>
     </div>
@@ -594,10 +594,7 @@ function BoothTerminal({ orders, stopMap, onToggleReceived, onToggleStop, title 
           return (
             <button
               key={s.id}
-              className={cx(
-                buttonBase,
-                active ? buttonPrimary : buttonGhost
-              )}
+              className={cx(buttonBase, active ? buttonPrimary : buttonGhost)}
               onClick={() => setStallTab(s.id)}
             >
               <ChefHat size={15} className="mr-2" />
@@ -608,7 +605,12 @@ function BoothTerminal({ orders, stopMap, onToggleReceived, onToggleStop, title 
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
-        <StatCard icon={Receipt} label="有効注文" value={detail.active} tone="violet" />
+        <StatCard
+          icon={Receipt}
+          label="レシート発行済み"
+          value={`${detail.active}（取消: ${detail.canceled}）`}
+          tone="violet"
+        />
         <StatCard icon={Clock3} label="受け取り待ち" value={detail.waiting} tone="amber" />
         <StatCard icon={CheckCircle2} label="受け取り済" value={detail.received} tone="emerald" />
         <StatCard icon={XCircle} label="取消" value={detail.canceled} tone="rose" />
@@ -665,8 +667,9 @@ function BoothTerminal({ orders, stopMap, onToggleReceived, onToggleStop, title 
 
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         {currentStall.menus.map((m) => {
-          const menuOrders = list.filter((o) => o.menuId === m.id);
-          const stopped = !!stopMap[m.id];
+          const menuOrders = list.filter((o) => o.menuKey === `${currentStall.id}-${m.id}`);
+          const currentMenuKey = `${currentStall.id}-${m.id}`;
+          const stopped = !!stopMap[currentMenuKey];
 
           return (
             <div key={m.id} className={cx(panel, "p-5")}>
@@ -677,7 +680,7 @@ function BoothTerminal({ orders, stopMap, onToggleReceived, onToggleStop, title 
                 </div>
                 <button
                   className={cx(buttonBase, stopped ? buttonDanger : buttonGhost)}
-                  onClick={() => onToggleStop(m.id)}
+                  onClick={() => onToggleStop(currentMenuKey)}
                 >
                   <Ban size={14} className="mr-2" />
                   {stopped ? "停止解除" : "注文ストップ"}
@@ -729,14 +732,12 @@ function BoothTerminal({ orders, stopMap, onToggleReceived, onToggleStop, title 
 function MonitorTerminal({ orders, stopMap, notifications, onCancelOrder, onCreateOrders, onToggleReceived, onToggleStop }) {
   const [tab, setTab] = useState("customer");
 
-  const activeStops = allMenus.filter((m) => stopMap[m.id]);
-  const fullyStoppedStalls = stalls.filter((s) => s.menus.every((m) => stopMap[m.id]));
+  const activeStops = allMenus.filter((m) => stopMap[m.menuKey]);
+  const fullyStoppedStalls = stalls.filter((s) => s.menus.every((m) => stopMap[`${s.id}-${m.id}`]));
   const recent = [...orders]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, 10);
-  const partialStops = activeStops.filter(
-    (m) => !fullyStoppedStalls.some((s) => s.id === m.stallId)
-  );
+  const partialStops = activeStops.filter((m) => !fullyStoppedStalls.some((s) => s.id === m.stallId));
 
   return (
     <div className={cx(panel, "p-5 md:p-6")}>
@@ -766,7 +767,7 @@ function MonitorTerminal({ orders, stopMap, notifications, onCancelOrder, onCrea
             ))}
 
             {partialStops.map((m) => (
-              <div key={m.id} className="rounded-2xl border border-red-100 bg-red-50/70 p-4 text-red-700">
+              <div key={m.menuKey} className="rounded-2xl border border-red-100 bg-red-50/70 p-4 text-red-700">
                 <span className="font-semibold">{m.stallName}</span> / {m.name} は注文停止中
               </div>
             ))}
@@ -903,6 +904,7 @@ export default function FestivalAccountingSystemPrototype() {
         stallId: item.stallId,
         stallName: item.stallName,
         menuId: item.menuId,
+        menuKey: item.menuKey,
         menuName: item.menuName,
         price: item.price,
         orderNumber: orderNo(item.stallId, nextSeq[item.stallId], item.menuId),
@@ -926,11 +928,15 @@ export default function FestivalAccountingSystemPrototype() {
       )
     );
 
-  const handleToggleStop = (menuId) =>
+  const handleToggleStop = (menuKey) =>
     setStopMap((prev) => {
-      const next = { ...prev, [menuId]: !prev[menuId] };
-      const m = allMenus.find((x) => x.id === menuId);
-      notify(`${m?.stallName ?? "屋台"} / ${m?.name ?? menuId} が ${next[menuId] ? "注文停止" : "停止解除"} されました`);
+      const next = { ...prev, [menuKey]: !prev[menuKey] };
+      const m = allMenus.find((x) => x.menuKey === menuKey);
+      notify(
+        `${m?.stallName ?? "屋台"} / ${m?.name ?? menuKey} が ${
+          next[menuKey] ? "注文停止" : "停止解除"
+        } されました`
+      );
       return next;
     });
 
@@ -945,34 +951,35 @@ export default function FestivalAccountingSystemPrototype() {
   };
 
   return (
-  <div className="h-screen overflow-y-scroll snap-y snap-mandatory bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.08),_transparent_28%),linear-gradient(180deg,_#f8fafc_0%,_#eef2ff_100%)] text-slate-900">
-    <div className="snap-start min-h-screen px-4 py-6 md:px-6 xl:px-8">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <HeaderHero />
-        <CustomerTerminal
-          orders={shared.orders}
-          stopMap={shared.stopMap}
-          onCreateOrders={shared.onCreateOrders}
-          resetAfterSubmit={true}
-        />
+    <div className="h-screen overflow-y-scroll snap-y snap-mandatory bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.08),_transparent_28%),linear-gradient(180deg,_#f8fafc_0%,_#eef2ff_100%)] text-slate-900">
+      <div className="snap-start min-h-screen px-4 py-6 md:px-6 xl:px-8">
+        <div className="mx-auto max-w-7xl space-y-6">
+          <HeaderHero />
+          <CustomerTerminal
+            orders={shared.orders}
+            stopMap={shared.stopMap}
+            onCreateOrders={shared.onCreateOrders}
+            resetAfterSubmit={true}
+          />
+        </div>
       </div>
-    </div>
 
-    <div className="snap-start min-h-screen px-4 py-6 md:px-6 xl:px-8">
-      <div className="mx-auto max-w-7xl">
-        <BoothTerminal
-          orders={shared.orders}
-          stopMap={shared.stopMap}
-          onToggleReceived={shared.onToggleReceived}
-          onToggleStop={shared.onToggleStop}
-        />
+      <div className="snap-start min-h-screen px-4 py-6 md:px-6 xl:px-8">
+        <div className="mx-auto max-w-7xl">
+          <BoothTerminal
+            orders={shared.orders}
+            stopMap={shared.stopMap}
+            onToggleReceived={shared.onToggleReceived}
+            onToggleStop={shared.onToggleStop}
+          />
+        </div>
       </div>
-    </div>
 
-    <div className="snap-start min-h-screen px-4 py-6 md:px-6 xl:px-8">
-      <div className="mx-auto max-w-7xl">
-        <MonitorTerminal {...shared} />
+      <div className="snap-start min-h-screen px-4 py-6 md:px-6 xl:px-8">
+        <div className="mx-auto max-w-7xl">
+          <MonitorTerminal {...shared} />
+        </div>
       </div>
     </div>
-  </div>
-);}
+  );
+}
