@@ -76,6 +76,17 @@ const orderNo = (stallId, seq, menuId) => `${stallId}-${pad3(seq)}-${menuId}`;
 
 const cx = (...arr) => arr.filter(Boolean).join(" ");
 
+const getTerminalRole = (pathname) => {
+  const normalized = String(pathname || "/")
+    .toLowerCase()
+    .replace(/\/+$/, "") || "/";
+
+  if (normalized === "/computer1") return "computer1";
+  if (normalized === "/computer2") return "computer2";
+  if (normalized === "/computer3") return "computer3";
+  return null;
+};
+
 const panel =
   "rounded-3xl border border-slate-200/80 bg-white/90 shadow-[0_12px_40px_rgba(15,23,42,0.08)] backdrop-blur";
 const softPanel =
