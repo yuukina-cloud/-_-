@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bell,
@@ -15,6 +15,7 @@ import {
   XCircle,
   ChefHat,
 } from "lucide-react";
+import { socket } from "./realtime";
 
 const FESTIVAL_NAME = "第〇回高専祭";
 
@@ -74,6 +75,17 @@ const fmtDate = (iso) => new Date(iso).toLocaleString("ja-JP");
 const orderNo = (stallId, seq, menuId) => `${stallId}-${pad3(seq)}-${menuId}`;
 
 const cx = (...arr) => arr.filter(Boolean).join(" ");
+
+const getTerminalRole = (pathname) => {
+  const normalized = String(pathname || "/")
+    .toLowerCase()
+    .replace(/\/+$/, "") || "/";
+
+  if (normalized === "/computer1") return "computer1";
+  if (normalized === "/computer2") return "computer2";
+  if (normalized === "/computer3") return "computer3";
+  return null;
+};
 
 const panel =
   "rounded-3xl border border-slate-200/80 bg-white/90 shadow-[0_12px_40px_rgba(15,23,42,0.08)] backdrop-blur";
@@ -422,9 +434,10 @@ function useCustomerView(orders, stopMap, onCreateOrders, resetAfterSubmit = fal
     setCart([]);
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (!cart.length) return;
-    const created = onCreateOrders(cart);
+    const created = await onCreateOrders(cart);
+    if (!created?.length) return;
     setReceipts(created);
     setCart([]);
     if (resetAfterSubmit) {
@@ -741,7 +754,12 @@ function MonitorTerminal({ orders, stopMap, notifications, onCancelOrder, onCrea
 
   return (
     <div className={cx(panel, "p-5 md:p-6")}>
-      <SectionTitle icon={LayoutDashboard} title="コン3（監視・統合）" subtitle="全体状況の確認と取消対応" />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <SectionTitle icon={LayoutDashboard} title="コン3（監視・統合）" subtitle="全体状況の確認と取消対応" />
+        <a className={cx(buttonBase, buttonGhost)} href="/api/export/orders.csv">
+          注文データをCSV保存
+        </a>
+      </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={Receipt} label="総注文数" value={orders.length} tone="violet" />
@@ -877,107 +895,140 @@ function MonitorTerminal({ orders, stopMap, notifications, onCancelOrder, onCrea
 }
 
 export default function FestivalAccountingSystemPrototype() {
-  const [orders, setOrders] = useState([]);
-  const [seqByStall, setSeqByStall] = useState({ A: 0, B: 0, C: 0 });
-  const [stopMap, setStopMap] = useState({});
-  const [notifications, setNotifications] = useState([]);
+  const [remote, setRemote] = useState({
+    orders: [],
+    stopMap: {},
+    notifications: [],
+  });
+  const [connected, setConnected] = useState(socket.connected);
+  const [persistence, setPersistence] = useState({ status: "saved", message: "" });
 
-  const notify = (message) =>
-    setNotifications((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        message,
-        createdAt: new Date().toISOString(),
-      },
-    ]);
+  useEffect(() => {
+    const onState = (next) => setRemote(next);
+    const onConnect = () => setConnected(true);
+    const onDisconnect = () => setConnected(false);
+    const onPersistence = (next) => setPersistence(next || { status: "saved", message: "" });
+    socket.on("state", onState);
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("persistence-status", onPersistence);
 
-  const handleCreateOrders = (cartItems) => {
-    const now = new Date().toISOString();
-    const nextSeq = { ...seqByStall };
+    const requestLatestState = () => socket.emit("request-state");
+    const onVisible = () => {
+      if (document.visibilityState === "visible") requestLatestState();
+    };
+    const intervalId = window.setInterval(requestLatestState, 5000);
+    window.addEventListener("focus", requestLatestState);
+    document.addEventListener("visibilitychange", onVisible);
+    requestLatestState();
 
-    const created = cartItems.map((item) => {
-      nextSeq[item.stallId] = (nextSeq[item.stallId] || 0) + 1;
-      return {
-        id: crypto.randomUUID(),
-        createdAt: now,
-        stallId: item.stallId,
-        stallName: item.stallName,
-        menuId: item.menuId,
-        menuKey: item.menuKey,
-        menuName: item.menuName,
-        price: item.price,
-        orderNumber: orderNo(item.stallId, nextSeq[item.stallId], item.menuId),
-        status: "未",
-        canceled: false,
-      };
-    });
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", requestLatestState);
+      document.removeEventListener("visibilitychange", onVisible);
+      socket.off("state", onState);
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("persistence-status", onPersistence);
+    };
+  }, []);
 
-    setSeqByStall(nextSeq);
-    setOrders((prev) => [...prev, ...created]);
-    return created;
-  };
-
-  const handleCancelOrder = (id) =>
-    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, canceled: true } : o)));
-
-  const handleToggleReceived = (id) =>
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === id ? { ...o, status: o.status === "未" ? "受け取り済" : "未" } : o
-      )
-    );
-
-  const handleToggleStop = (menuKey) =>
-    setStopMap((prev) => {
-      const next = { ...prev, [menuKey]: !prev[menuKey] };
-      const m = allMenus.find((x) => x.menuKey === menuKey);
-      notify(
-        `${m?.stallName ?? "屋台"} / ${m?.name ?? menuKey} が ${
-          next[menuKey] ? "注文停止" : "停止解除"
-        } されました`
-      );
-      return next;
+  const handleCreateOrders = (cartItems) =>
+    new Promise((resolve) => {
+      socket.timeout(5000).emit("create-orders", cartItems, (err, response) => {
+        if (err || !response?.ok) {
+          setPersistence({ status: "error", message: response?.error || "注文の保存に失敗しました" });
+          return resolve([]);
+        }
+        resolve(response.created);
+      });
     });
 
   const shared = {
-    orders,
-    stopMap,
+    orders: remote.orders || [],
+    stopMap: remote.stopMap || {},
+    notifications: remote.notifications || [],
     onCreateOrders: handleCreateOrders,
-    onToggleReceived: handleToggleReceived,
-    onToggleStop: handleToggleStop,
-    notifications,
-    onCancelOrder: handleCancelOrder,
+    onToggleReceived: (id) => socket.emit("toggle-received", id, (response) => {
+      if (!response?.ok) setPersistence({ status: "error", message: response?.error || "保存に失敗しました" });
+    }),
+    onToggleStop: (menuKey) => socket.emit("toggle-stop", menuKey, (response) => {
+      if (!response?.ok) setPersistence({ status: "error", message: response?.error || "保存に失敗しました" });
+    }),
+    onCancelOrder: (id) => socket.emit("cancel-order", id, (response) => {
+      if (!response?.ok) setPersistence({ status: "error", message: response?.error || "保存に失敗しました" });
+    }),
   };
 
-  return (
-    <div className="h-screen overflow-y-scroll snap-y snap-mandatory bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.08),_transparent_28%),linear-gradient(180deg,_#f8fafc_0%,_#eef2ff_100%)] text-slate-900">
-      <div className="snap-start min-h-screen px-4 py-6 md:px-6 xl:px-8">
-        <div className="mx-auto max-w-7xl space-y-6">
-          <HeaderHero />
-          <CustomerTerminal
-            orders={shared.orders}
-            stopMap={shared.stopMap}
-            onCreateOrders={shared.onCreateOrders}
-            resetAfterSubmit={true}
-          />
-        </div>
-      </div>
+  const role = getTerminalRole(window.location.pathname);
+  const saveLabel = !connected
+    ? { text: "● 接続待ち", className: "text-rose-700" }
+    : persistence.status === "saving"
+      ? { text: "● 保存中…", className: "text-amber-700" }
+      : persistence.status === "error"
+        ? { text: "● 保存失敗", className: "text-rose-700" }
+        : { text: "● 接続中・保存済み", className: "text-emerald-700" };
 
-      <div className="snap-start min-h-screen px-4 py-6 md:px-6 xl:px-8">
+  const connectionBadge = (
+    <div
+      className="fixed right-4 top-4 z-50 rounded-2xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-semibold shadow-lg"
+      title={persistence.message || saveLabel.text}
+    >
+      <span className={saveLabel.className}>{saveLabel.text}</span>
+      {persistence.status === "error" && persistence.message ? (
+        <div className="mt-1 max-w-64 font-normal text-rose-600">{persistence.message}</div>
+      ) : null}
+    </div>
+  );
+
+  if (role === "computer1") {
+    return (
+      <div className="min-h-screen bg-[linear-gradient(180deg,_#f8fafc_0%,_#eef2ff_100%)] px-4 py-6 text-slate-900 md:px-6 xl:px-8">
+        {connectionBadge}
         <div className="mx-auto max-w-7xl">
-          <BoothTerminal
-            orders={shared.orders}
-            stopMap={shared.stopMap}
-            onToggleReceived={shared.onToggleReceived}
-            onToggleStop={shared.onToggleStop}
-          />
+          <CustomerTerminal {...shared} resetAfterSubmit={true} />
         </div>
       </div>
+    );
+  }
 
-      <div className="snap-start min-h-screen px-4 py-6 md:px-6 xl:px-8">
+  if (role === "computer2") {
+    return (
+      <div className="min-h-screen bg-[linear-gradient(180deg,_#f8fafc_0%,_#eef2ff_100%)] px-4 py-6 text-slate-900 md:px-6 xl:px-8">
+        {connectionBadge}
+        <div className="mx-auto max-w-7xl">
+          <BoothTerminal {...shared} />
+        </div>
+      </div>
+    );
+  }
+
+  if (role === "computer3") {
+    return (
+      <div className="min-h-screen bg-[linear-gradient(180deg,_#f8fafc_0%,_#eef2ff_100%)] px-4 py-6 text-slate-900 md:px-6 xl:px-8">
+        {connectionBadge}
         <div className="mx-auto max-w-7xl">
           <MonitorTerminal {...shared} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[linear-gradient(180deg,_#f8fafc_0%,_#eef2ff_100%)] px-4 py-8 text-slate-900">
+      {connectionBadge}
+      <div className="mx-auto max-w-5xl space-y-6">
+        <HeaderHero />
+        <div className={cx(panel, "p-6")}>
+          <SectionTitle title="端末を選択" subtitle="各パソコンでは担当するURLだけを開いてください" />
+          <div className="grid gap-4 md:grid-cols-3">
+            <a href="/computer1" className={cx(buttonBase, buttonPrimary, "py-5 text-base")}>コン1（注文端末）</a>
+            <a href="/computer2" className={cx(buttonBase, buttonPrimary, "py-5 text-base")}>コン2（屋台管理）</a>
+            <a href="/computer3" className={cx(buttonBase, buttonPrimary, "py-5 text-base")}>コン3（統合監視）</a>
+          </div>
+          <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm leading-7 text-slate-600">
+            3台は別々のWi-Fiやテザリングから接続できます。注文・受け取り・停止・取消はリアルタイムで同期され、Supabaseへ注文ごとに保存されます。
+          </div>
         </div>
       </div>
     </div>
