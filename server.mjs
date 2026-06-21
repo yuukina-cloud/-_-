@@ -173,6 +173,20 @@ io.on("connection", (socket) => {
   socket.emit("state", state);
   socket.emit("persistence-status", { status: "saved", message: "", at: new Date().toISOString() });
 
+  socket.on("request-state", async () => {
+    try {
+      state = await readState();
+      socket.emit("state", state);
+    } catch (error) {
+      console.error("最新状態の再取得に失敗しました:", error);
+      socket.emit("persistence-status", {
+        status: "error",
+        message: "最新データの取得に失敗しました",
+        at: new Date().toISOString(),
+      });
+    }
+  });
+
   socket.on("create-orders", (cartItems, ack = () => {}) => {
     if (!Array.isArray(cartItems) || !cartItems.length) return ack({ ok: false, error: "注文が空です" });
     if (!supabase) return ack({ ok: false, error: "Supabaseが設定されていません" });
@@ -254,9 +268,7 @@ app.get("/api/export/orders.csv", async (_req, res) => {
 
 const dist = path.join(__dirname, "dist");
 app.use(express.static(dist));
-app.get("/{*splat}", (_req, res) =>
-  res.sendFile(path.join(dist, "index.html"))
-);
+app.get("/{*splat}", (_req, res) => res.sendFile(path.join(dist, "index.html")));
 
 async function startServer() {
   if (!supabase) throw new Error("SUPABASE_URL と SUPABASE_SECRET_KEY を設定してください");
