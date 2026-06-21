@@ -3,7 +3,7 @@ services:
     name: festival-3pc-realtime
     runtime: node
     plan: free
-    buildCommand: npm ci --include=dev --production=false && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /health
     envVars:
