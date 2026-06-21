@@ -254,7 +254,9 @@ app.get("/api/export/orders.csv", async (_req, res) => {
 
 const dist = path.join(__dirname, "dist");
 app.use(express.static(dist));
-app.get("*", (_req, res) => res.sendFile(path.join(dist, "index.html")));
+app.get("/{*splat}", (_req, res) =>
+  res.sendFile(path.join(dist, "index.html"))
+);
 
 async function startServer() {
   if (!supabase) throw new Error("SUPABASE_URL と SUPABASE_SECRET_KEY を設定してください");
